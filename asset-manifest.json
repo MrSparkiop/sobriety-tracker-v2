@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/sobriety-tracker-v2/static/css/main.71fd9e3c.css",
-    "main.js": "/sobriety-tracker-v2/static/js/main.96a83ec4.js",
+    "main.css": "/sobriety-tracker-v2/static/css/main.cf900bee.css",
+    "main.js": "/sobriety-tracker-v2/static/js/main.217a9218.js",
     "static/js/453.b8d8bde2.chunk.js": "/sobriety-tracker-v2/static/js/453.b8d8bde2.chunk.js",
     "index.html": "/sobriety-tracker-v2/index.html",
-    "main.71fd9e3c.css.map": "/sobriety-tracker-v2/static/css/main.71fd9e3c.css.map",
-    "main.96a83ec4.js.map": "/sobriety-tracker-v2/static/js/main.96a83ec4.js.map",
+    "main.cf900bee.css.map": "/sobriety-tracker-v2/static/css/main.cf900bee.css.map",
+    "main.217a9218.js.map": "/sobriety-tracker-v2/static/js/main.217a9218.js.map",
     "453.b8d8bde2.chunk.js.map": "/sobriety-tracker-v2/static/js/453.b8d8bde2.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.71fd9e3c.css",
-    "static/js/main.96a83ec4.js"
+    "static/css/main.cf900bee.css",
+    "static/js/main.217a9218.js"
   ]
 }
