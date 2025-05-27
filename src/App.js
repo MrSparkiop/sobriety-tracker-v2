@@ -1,16 +1,16 @@
 import React from 'react';
-// Make sure to import BrowserRouter and rename it to Router
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext'; // Path from App.js to context is correct
 import Register from './components/Register';
 import Login from './components/Login';
 import SobrietyTracker from './components/SobrietyTracker';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminPage from './components/AdminPage'; 
+import AdminProtectedRoute from './components/AdminProtectedRoute'; 
 
 function App() {
   return (
     <AuthProvider>
-      {/* This is the line we are changing */}
       <Router basename="/sobriety-tracker-v2">
         <Routes>
           <Route path="/register" element={<Register />} />
@@ -21,6 +21,14 @@ function App() {
               <ProtectedRoute>
                 <SobrietyTracker />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminProtectedRoute>
+                <AdminPage />
+              </AdminProtectedRoute>
             }
           />
         </Routes>

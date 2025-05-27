@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, serverTimestamp, deleteDoc, updateDoc, arrayUnion, getDocs, query, orderBy } from 'firebase/firestore';
+// Ensure all these are used, or ESLint will warn
+import { 
+    getFirestore, 
+    doc, 
+    setDoc, // Used in handleSetStartDate
+    onSnapshot, 
+    collection, 
+    addDoc, // Used in handleAddJournalEntry
+    serverTimestamp, // Used in handleAddJournalEntry
+    deleteDoc, // Used in handleDeleteJournalEntry
+    updateDoc, // Used in handleCloseMilestoneModal
+    arrayUnion, // Used in handleCloseMilestoneModal
+    getDocs, 
+    query, 
+    orderBy 
+} from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { app } from '../firebaseConfig';
 import MilestoneModal from './MilestoneModal';
@@ -8,20 +23,15 @@ import TimerCard from './TimerCard';
 import JournalEntryCard from './JournalEntryCard';
 
 const db = getFirestore(app);
-
-// Milestones are fetched from Firestore now, so the hardcoded array is removed.
-
 const appId = 'default-sobriety-app';
 
 export default function SobrietyTracker() {
-  const { currentUser, auth } = useAuth(); 
+  const { currentUser, auth } = useAuth(); // 'auth' is used in handleLogout
   const [sobrietyStartDate, setSobrietyStartDate] = useState('');
   const [inputStartDate, setInputStartDate] = useState('');
   const [duration, setDuration] = useState({ years: 0, months: 0, days: 0, hours: 0, minutes: 0, seconds: 0 });
-  
-  const [dbMilestones, setDbMilestones] = useState([]); // For milestones from Firestore
-  
-  const [achievedMilestones, setAchievedMilestones] = useState([]);
+  const [dbMilestones, setDbMilestones] = useState([]);
+  const [achievedMilestonesDays, setAchievedMilestonesDays] = useState([]);
   const [milestoneToShow, setMilestoneToShow] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
   const [newJournalEntry, setNewJournalEntry] = useState('');
@@ -29,15 +39,14 @@ export default function SobrietyTracker() {
   const [error, setError] = useState(null);
   const [isStartDateModalOpen, setIsStartDateModalOpen] = useState(false);
   const [isJournalModalOpen, setIsJournalModalOpen] = useState(false);
+  const [totalSoberDays, setTotalSoberDays] = useState(0);
 
   const calculateDuration = useCallback((startDateString) => {
     const start = new Date(startDateString);
     const now = new Date();
-
     if (isNaN(start.getTime()) || start > now) {
       return { years: 0, months: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
     }
-
     let years = now.getFullYear() - start.getFullYear();
     let months = now.getMonth() - start.getMonth();
     let days = now.getDate() - start.getDate();
@@ -54,7 +63,6 @@ export default function SobrietyTracker() {
       months--;
     }
     if (months < 0) { months += 12; years--; }
-
     return { years, months, days, hours, minutes, seconds };
   }, []);
 
@@ -68,7 +76,6 @@ export default function SobrietyTracker() {
 
   useEffect(() => {
     if (!currentUser) return; 
-
     const fetchMilestones = async () => {
       try {
         const milestonesCollectionRef = collection(db, "milestones");
@@ -84,15 +91,13 @@ export default function SobrietyTracker() {
         setError("Failed to load milestones configuration.");
       }
     };
-
     fetchMilestones();
   }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser || dbMilestones.length === 0) {
-        // Don't set isLoading to false here if dbMilestones are still loading.
-        // We can let the profile listener handle the final isLoading = false.
-        return; 
+        setIsLoading(false); 
+        return;
     }
     
     setIsLoading(true); 
@@ -102,8 +107,8 @@ export default function SobrietyTracker() {
     const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            const previouslyAchieved = data.achievedMilestones || [];
-            setAchievedMilestones(previouslyAchieved);
+            const previouslyAchievedDays = data.achievedMilestones || [];
+            setAchievedMilestonesDays(previouslyAchievedDays);
 
             if (data.startDate) {
                 setSobrietyStartDate(data.startDate);
@@ -111,17 +116,18 @@ export default function SobrietyTracker() {
                 const currentDuration = calculateDuration(data.startDate);
                 setDuration(currentDuration);
 
-                const totalSoberDays = Math.floor((new Date() - new Date(data.startDate)) / (1000 * 60 * 60 * 24));
+                const currentTotalSoberDays = Math.max(0, Math.floor((new Date() - new Date(data.startDate)) / (1000 * 60 * 60 * 24)));
+                setTotalSoberDays(currentTotalSoberDays);
+
                 const unseenMilestones = dbMilestones.filter(m => 
-                    totalSoberDays >= m.days && 
-                    !previouslyAchieved.includes(m.days) 
+                    currentTotalSoberDays >= m.days && 
+                    !previouslyAchievedDays.includes(m.days) 
                 );
 
                 if (unseenMilestones.length > 0) {
                     const latestUnseenMilestone = unseenMilestones.sort((a, b) => b.days - a.days)[0];
                     setMilestoneToShow(latestUnseenMilestone);
                 }
-
             } else {
                 setIsStartDateModalOpen(true);
             }
@@ -143,9 +149,7 @@ export default function SobrietyTracker() {
         });
         entries.sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
         setJournalEntries(entries);
-    }, (err) => {
-        console.error("Error fetching journal entries:", err);
-    });
+    }, (err) => { console.error("Error fetching journal entries:", err); });
 
     return () => {
         unsubscribeProfile();
@@ -155,11 +159,10 @@ export default function SobrietyTracker() {
 
   const handleCloseMilestoneModal = async () => {
     if (!milestoneToShow || !currentUser) return;
-
     const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
     try {
-        await updateDoc(userDocRef, {
-            achievedMilestones: arrayUnion(milestoneToShow.days)
+        await updateDoc(userDocRef, { // Uses updateDoc
+            achievedMilestones: arrayUnion(milestoneToShow.days) // Uses arrayUnion
         });
         setMilestoneToShow(null);
     } catch (error) {
@@ -172,10 +175,10 @@ export default function SobrietyTracker() {
       if (!db || !currentUser || !inputStartDate) return;
       try {
           const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
-          await setDoc(userDocRef, { startDate: inputStartDate, achievedMilestones: [] }, { merge: true });
+          await setDoc(userDocRef, { startDate: inputStartDate, achievedMilestones: [] }, { merge: true }); // Uses setDoc
           setIsStartDateModalOpen(false);
           setError(null);
-          setMilestoneToShow(null); 
+          setMilestoneToShow(null);
       } catch (e) {
           console.error("Error saving start date:", e);
           setError("Failed to save start date. " + e.message);
@@ -186,9 +189,9 @@ export default function SobrietyTracker() {
       if (!db || !currentUser || !newJournalEntry.trim()) return;
       try {
           const journalCollectionRef = collection(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`);
-          await addDoc(journalCollectionRef, {
+          await addDoc(journalCollectionRef, { // Uses addDoc
               text: newJournalEntry,
-              timestamp: serverTimestamp()
+              timestamp: serverTimestamp() // Uses serverTimestamp
           });
           setNewJournalEntry('');
           setIsJournalModalOpen(false);
@@ -204,7 +207,7 @@ export default function SobrietyTracker() {
       if (window.confirm("Are you sure you want to delete this journal entry?")) {
           try {
               const entryDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`, entryId);
-              await deleteDoc(entryDocRef);
+              await deleteDoc(entryDocRef); // Uses deleteDoc
           } catch (e) {
               console.error("Error deleting journal entry:", e);
               setError("Failed to delete journal entry. " + e.message);
@@ -214,13 +217,13 @@ export default function SobrietyTracker() {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      await auth.signOut(); // Uses auth
     } catch (error) {
       console.error("Failed to log out", error);
     }
   };
   
-  if (isLoading && dbMilestones.length === 0) { // Show loading if milestones aren't loaded yet
+  if (isLoading && dbMilestones.length === 0) {
       return (
           <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex flex-col justify-center items-center p-4 text-white">
               <div className="animate-pulse text-2xl font-semibold">Loading Your Journey...</div>
@@ -239,6 +242,17 @@ export default function SobrietyTracker() {
       );
   }
   
+  // Prepare milestones for display
+  const displayableMilestones = dbMilestones.map(milestone => {
+    const isAchieved = achievedMilestonesDays.includes(milestone.days);
+    const daysToGo = milestone.days - totalSoberDays;
+    return {
+        ...milestone,
+        isAchieved,
+        daysToGo: isAchieved || daysToGo <= 0 ? 0 : daysToGo,
+    };
+  });
+
   return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-700 text-white p-4 sm:p-6 md:p-8">
           <MilestoneModal milestone={milestoneToShow} onClose={handleCloseMilestoneModal} />
@@ -255,7 +269,7 @@ export default function SobrietyTracker() {
               </div>
           </header>
 
-          {(!sobrietyStartDate && !isLoading) && ( // Keep !isLoading check for initial date set prompt
+          {(!sobrietyStartDate && !isLoading) && (
               <div className="flex justify-center">
                   <button onClick={() => setIsStartDateModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all text-lg">
                       ✨ Set Your Sobriety Start Date
@@ -265,6 +279,7 @@ export default function SobrietyTracker() {
 
           {sobrietyStartDate && (
               <>
+                  {/* Timer Display Section */}
                   <div className="mb-8 p-6 bg-slate-800/50 backdrop-blur-sm rounded-xl shadow-2xl border border-white/10">
                       <div className="flex justify-between items-center mb-6">
                           <h2 className="text-2xl font-semibold text-green-400">Time Sober</h2>
@@ -272,7 +287,6 @@ export default function SobrietyTracker() {
                               Edit Start Date
                           </button>
                       </div>
-                      
                       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-4 text-white">
                         <TimerCard value={duration.years} label="Years" className="bg-green-600/70" />
                         <TimerCard value={duration.months} label="Months" className="bg-emerald-600/70" />
@@ -283,10 +297,40 @@ export default function SobrietyTracker() {
                       </div>
                   </div>
 
+                  {/* My Milestones Section */}
+                  <div className="mt-10 p-6 bg-slate-800 rounded-xl shadow-2xl">
+                      <h2 className="text-2xl font-semibold text-amber-400 mb-6">My Milestones</h2>
+                      {displayableMilestones.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                              {displayableMilestones.map(ms => (
+                                  <div key={ms.id || ms.days} className={`p-4 rounded-lg shadow-md transition-all ${ms.isAchieved ? 'bg-green-500/80 border-green-400' : 'bg-slate-700/60 border-slate-600'} border`}>
+                                      <h3 className={`font-semibold text-lg ${ms.isAchieved ? 'text-white' : 'text-slate-300'}`}>{ms.title}</h3>
+                                      {ms.isAchieved ? (
+                                          <p className="text-xs text-white/80 flex items-center mt-1">
+                                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1 text-yellow-300"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                              Achieved!
+                                          </p>
+                                      ) : (
+                                          <p className="text-xs text-slate-400 mt-1">
+                                              {ms.daysToGo > 0 ? `${ms.daysToGo} day${ms.daysToGo > 1 ? 's' : ''} to go` : 'Coming soon!'}
+                                          </p>
+                                      )}
+                                  </div>
+                              ))}
+                          </div>
+                      ) : (
+                          <p className="text-slate-400 text-center">Milestones are loading or none are defined yet.</p>
+                      )}
+                  </div>
+
+                  {/* Journal Section */}
                   <div className="mt-10 p-6 bg-slate-800 rounded-xl shadow-2xl">
                       <div className="flex justify-between items-center mb-6">
                           <h2 className="text-2xl font-semibold text-sky-400">My Journal</h2>
-                          <button onClick={() => setIsJournalModalOpen(true)} className="bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition-all">
+                          <button
+                              onClick={() => setIsJournalModalOpen(true)}
+                              className="bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition-all"
+                          >
                               Add Entry ✍️
                           </button>
                       </div>
