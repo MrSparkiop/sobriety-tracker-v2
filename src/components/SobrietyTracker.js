@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// Ensure all these are used, or ESLint will warn
 import { 
     getFirestore, 
     doc, 
-    setDoc, // Used in handleSetStartDate
+    setDoc, 
     onSnapshot, 
     collection, 
-    addDoc, // Used in handleAddJournalEntry
-    serverTimestamp, // Used in handleAddJournalEntry
-    deleteDoc, // Used in handleDeleteJournalEntry
-    updateDoc, // Used in handleCloseMilestoneModal
-    arrayUnion, // Used in handleCloseMilestoneModal
+    addDoc, 
+    serverTimestamp, 
+    deleteDoc, 
+    updateDoc, 
+    arrayUnion, 
     getDocs, 
+    getDoc,
     query, 
     orderBy 
 } from 'firebase/firestore';
@@ -21,12 +21,13 @@ import MilestoneModal from './MilestoneModal';
 import Modal from './Modal';
 import TimerCard from './TimerCard';
 import JournalEntryCard from './JournalEntryCard';
+import MoodCheckin from './MoodCheckin';
 
 const db = getFirestore(app);
 const appId = 'default-sobriety-app';
 
 export default function SobrietyTracker() {
-  const { currentUser, auth } = useAuth(); // 'auth' is used in handleLogout
+  const { currentUser, auth } = useAuth(); 
   const [sobrietyStartDate, setSobrietyStartDate] = useState('');
   const [inputStartDate, setInputStartDate] = useState('');
   const [duration, setDuration] = useState({ years: 0, months: 0, days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -40,6 +41,8 @@ export default function SobrietyTracker() {
   const [isStartDateModalOpen, setIsStartDateModalOpen] = useState(false);
   const [isJournalModalOpen, setIsJournalModalOpen] = useState(false);
   const [totalSoberDays, setTotalSoberDays] = useState(0);
+  const [hasCheckedInToday, setHasCheckedInToday] = useState(false);
+  const [isLoadingCheckinStatus, setIsLoadingCheckinStatus] = useState(true);
 
   const calculateDuration = useCallback((startDateString) => {
     const start = new Date(startDateString);
@@ -126,7 +129,10 @@ export default function SobrietyTracker() {
 
                 if (unseenMilestones.length > 0) {
                     const latestUnseenMilestone = unseenMilestones.sort((a, b) => b.days - a.days)[0];
-                    setMilestoneToShow(latestUnseenMilestone);
+                     // Only set if it's a new milestone or different from current one being shown
+                    if (!milestoneToShow || (milestoneToShow && milestoneToShow.days !== latestUnseenMilestone.days)) {
+                         setMilestoneToShow(latestUnseenMilestone);
+                    }
                 }
             } else {
                 setIsStartDateModalOpen(true);
@@ -155,19 +161,59 @@ export default function SobrietyTracker() {
         unsubscribeProfile();
         unsubscribeJournal();
     };
-  }, [currentUser, calculateDuration, dbMilestones]);
+  }, [currentUser, calculateDuration, dbMilestones, milestoneToShow]);
 
+  useEffect(() => {
+    if (!currentUser) {
+        setIsLoadingCheckinStatus(false);
+        return;
+    }
+    const getTodayDateString = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    const checkTodaysCheckin = async () => {
+        setIsLoadingCheckinStatus(true);
+        const todayDateString = getTodayDateString();
+        const checkinDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/moodCheckins`, todayDateString);
+        try {
+            const docSnap = await getDoc(checkinDocRef);
+            setHasCheckedInToday(docSnap.exists());
+        } catch (err) {
+            console.error("Error checking for today's check-in:", err);
+            setHasCheckedInToday(false); 
+        }
+        setIsLoadingCheckinStatus(false);
+    };
+    checkTodaysCheckin();
+  }, [currentUser]); 
+
+  // --- `handleCloseMilestoneModal` with DEBUGGING LOGS ---
   const handleCloseMilestoneModal = async () => {
-    if (!milestoneToShow || !currentUser) return;
+    console.log("SobrietyTracker: handleCloseMilestoneModal called. Current milestoneToShow:", milestoneToShow); 
+
+    if (!milestoneToShow || !currentUser) {
+      console.log("SobrietyTracker: handleCloseMilestoneModal returning early - no milestone or user."); 
+      return;
+    }
+
     const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
     try {
-        await updateDoc(userDocRef, { // Uses updateDoc
-            achievedMilestones: arrayUnion(milestoneToShow.days) // Uses arrayUnion
+        console.log("SobrietyTracker: Trying to update Firestore for milestone (days):", milestoneToShow.days); 
+        await updateDoc(userDocRef, {
+            achievedMilestones: arrayUnion(milestoneToShow.days)
         });
+        console.log("SobrietyTracker: Firestore updated. Attempting to set milestoneToShow to null."); 
         setMilestoneToShow(null);
+        console.log("SobrietyTracker: milestoneToShow should be null now (after try)."); 
     } catch (error) {
-        console.error("Error updating milestones:", error);
+        console.error("Error updating milestones in Firestore:", error); 
+        console.log("SobrietyTracker: Error occurred. Attempting to set milestoneToShow to null anyway."); 
         setMilestoneToShow(null);
+        console.log("SobrietyTracker: milestoneToShow should be null now (after catch)."); 
     }
   };
 
@@ -175,10 +221,10 @@ export default function SobrietyTracker() {
       if (!db || !currentUser || !inputStartDate) return;
       try {
           const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
-          await setDoc(userDocRef, { startDate: inputStartDate, achievedMilestones: [] }, { merge: true }); // Uses setDoc
+          await setDoc(userDocRef, { startDate: inputStartDate, achievedMilestones: [] }, { merge: true });
           setIsStartDateModalOpen(false);
           setError(null);
-          setMilestoneToShow(null);
+          setMilestoneToShow(null); 
       } catch (e) {
           console.error("Error saving start date:", e);
           setError("Failed to save start date. " + e.message);
@@ -189,9 +235,9 @@ export default function SobrietyTracker() {
       if (!db || !currentUser || !newJournalEntry.trim()) return;
       try {
           const journalCollectionRef = collection(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`);
-          await addDoc(journalCollectionRef, { // Uses addDoc
+          await addDoc(journalCollectionRef, {
               text: newJournalEntry,
-              timestamp: serverTimestamp() // Uses serverTimestamp
+              timestamp: serverTimestamp()
           });
           setNewJournalEntry('');
           setIsJournalModalOpen(false);
@@ -207,7 +253,7 @@ export default function SobrietyTracker() {
       if (window.confirm("Are you sure you want to delete this journal entry?")) {
           try {
               const entryDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`, entryId);
-              await deleteDoc(entryDocRef); // Uses deleteDoc
+              await deleteDoc(entryDocRef);
           } catch (e) {
               console.error("Error deleting journal entry:", e);
               setError("Failed to delete journal entry. " + e.message);
@@ -217,13 +263,19 @@ export default function SobrietyTracker() {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut(); // Uses auth
+      await auth.signOut();
     } catch (error) {
       console.error("Failed to log out", error);
     }
   };
   
-  if (isLoading && dbMilestones.length === 0) {
+  const handleCheckinSaved = () => {
+      setHasCheckedInToday(true);
+  };
+  
+  const isPageLoading = isLoading || isLoadingCheckinStatus;
+
+  if (isPageLoading && !error) {
       return (
           <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex flex-col justify-center items-center p-4 text-white">
               <div className="animate-pulse text-2xl font-semibold">Loading Your Journey...</div>
@@ -242,7 +294,6 @@ export default function SobrietyTracker() {
       );
   }
   
-  // Prepare milestones for display
   const displayableMilestones = dbMilestones.map(milestone => {
     const isAchieved = achievedMilestonesDays.includes(milestone.days);
     const daysToGo = milestone.days - totalSoberDays;
@@ -269,8 +320,8 @@ export default function SobrietyTracker() {
               </div>
           </header>
 
-          {(!sobrietyStartDate && !isLoading) && (
-              <div className="flex justify-center">
+          {(!sobrietyStartDate && !isPageLoading) && (
+              <div className="flex justify-center mb-8">
                   <button onClick={() => setIsStartDateModalOpen(true)} className="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all text-lg">
                       ✨ Set Your Sobriety Start Date
                   </button>
@@ -279,7 +330,6 @@ export default function SobrietyTracker() {
 
           {sobrietyStartDate && (
               <>
-                  {/* Timer Display Section */}
                   <div className="mb-8 p-6 bg-slate-800/50 backdrop-blur-sm rounded-xl shadow-2xl border border-white/10">
                       <div className="flex justify-between items-center mb-6">
                           <h2 className="text-2xl font-semibold text-green-400">Time Sober</h2>
@@ -297,7 +347,17 @@ export default function SobrietyTracker() {
                       </div>
                   </div>
 
-                  {/* My Milestones Section */}
+                  {sobrietyStartDate && !isLoadingCheckinStatus && !hasCheckedInToday && (
+                      <div className="my-10"> 
+                          <MoodCheckin userId={currentUser.uid} onCheckinSaved={handleCheckinSaved} />
+                      </div>
+                  )}
+                  {sobrietyStartDate && !isLoadingCheckinStatus && hasCheckedInToday && (
+                      <div className="my-10 p-6 bg-slate-700/50 backdrop-blur-sm rounded-xl shadow-xl border border-white/10 text-center">
+                          <p className="text-lg text-green-400">😊 You've checked in for today. Great job!</p>
+                      </div>
+                  )}
+
                   <div className="mt-10 p-6 bg-slate-800 rounded-xl shadow-2xl">
                       <h2 className="text-2xl font-semibold text-amber-400 mb-6">My Milestones</h2>
                       {displayableMilestones.length > 0 ? (
@@ -319,11 +379,10 @@ export default function SobrietyTracker() {
                               ))}
                           </div>
                       ) : (
-                          <p className="text-slate-400 text-center">Milestones are loading or none are defined yet.</p>
+                          !isLoading && <p className="text-slate-400 text-center">Milestones are loading or none are defined yet.</p>
                       )}
                   </div>
 
-                  {/* Journal Section */}
                   <div className="mt-10 p-6 bg-slate-800 rounded-xl shadow-2xl">
                       <div className="flex justify-between items-center mb-6">
                           <h2 className="text-2xl font-semibold text-sky-400">My Journal</h2>

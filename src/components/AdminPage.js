@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom'; // 'Link' will now be used
-import { useAuth } from '../context/AuthContext'; // 'auth' from useAuth will be used
-// Import doc, deleteDoc, and updateDoc from Firestore
+import { Link } from 'react-router-dom'; // Link is used for navigation
+import { useAuth } from '../context/AuthContext';
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import Modal from './Modal'; // Assuming Modal.js is in the same components folder
@@ -9,24 +8,30 @@ import Modal from './Modal'; // Assuming Modal.js is in the same components fold
 const db = getFirestore(app);
 
 export default function AdminPage() {
-  const { auth } = useAuth(); // 'auth' is used in handleLogout
+  const { auth } = useAuth();
 
   const [milestones, setMilestones] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [isLoadingMilestones, setIsLoadingMilestones] = useState(true); // Renamed for clarity
+  const [milestoneError, setMilestoneError] = useState(''); // Renamed for clarity
   
   const [newMilestoneDays, setNewMilestoneDays] = useState('');
   const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isSubmittingMilestone, setIsSubmittingMilestone] = useState(false); 
 
   const [editingMilestone, setEditingMilestone] = useState(null);
   const [editDays, setEditDays] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
+  // --- NEW: State for listing users ---
+  const [allUsers, setAllUsers] = useState([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [userListError, setUserListError] = useState('');
+
+  // Fetch Milestones
   const fetchMilestones = useCallback(async () => {
-    setIsLoading(true);
-    setError('');
+    setIsLoadingMilestones(true);
+    setMilestoneError('');
     try {
       const milestonesCollectionRef = collection(db, "milestones");
       const q = query(milestonesCollectionRef, orderBy("days", "asc"));
@@ -38,29 +43,51 @@ export default function AdminPage() {
       setMilestones(milestonesData);
     } catch (err) {
       console.error("Error fetching milestones:", err);
-      setError("Failed to load milestones. " + err.message);
+      setMilestoneError("Failed to load milestones. " + err.message);
     }
-    setIsLoading(false);
+    setIsLoadingMilestones(false);
+  }, []);
+
+  // --- NEW: Fetch Users ---
+  const fetchUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
+    setUserListError('');
+    try {
+        // Assuming you have a top-level 'users' collection
+        // where each document ID is the user's UID and contains at least an 'email' field.
+        const usersCollectionRef = collection(db, "users"); 
+        const querySnapshot = await getDocs(usersCollectionRef);
+        const usersData = [];
+        querySnapshot.forEach((doc) => {
+            usersData.push({ uid: doc.id, ...doc.data() });
+        });
+        setAllUsers(usersData);
+    } catch (err) {
+        console.error("Error fetching users:", err);
+        setUserListError("Failed to load users. " + err.message);
+    }
+    setIsLoadingUsers(false);
   }, []);
 
   useEffect(() => {
     fetchMilestones();
-  }, [fetchMilestones]);
+    fetchUsers(); // Fetch users when component mounts
+  }, [fetchMilestones, fetchUsers]);
 
-  const handleAddMilestone = async (e) => { // This function will now be used by the form
+  const handleAddMilestone = async (e) => {
     e.preventDefault();
     if (!newMilestoneDays || !newMilestoneTitle.trim()) {
-      setError("Both 'Days' and 'Title' are required for new milestone.");
+      setMilestoneError("Both 'Days' and 'Title' are required for new milestone.");
       return;
     }
     const daysNum = parseInt(newMilestoneDays);
     if (isNaN(daysNum) || daysNum <= 0) {
-      setError("'Days' must be a positive number for new milestone.");
+      setMilestoneError("'Days' must be a positive number for new milestone.");
       return;
     }
 
-    setIsSubmitting(true);
-    setError('');
+    setIsSubmittingMilestone(true);
+    setMilestoneError('');
     try {
       const milestonesCollectionRef = collection(db, "milestones");
       await addDoc(milestonesCollectionRef, {
@@ -72,23 +99,23 @@ export default function AdminPage() {
       await fetchMilestones(); 
     } catch (err) {
       console.error("Error adding milestone:", err);
-      setError("Failed to add milestone. " + err.message);
+      setMilestoneError("Failed to add milestone. " + err.message);
     }
-    setIsSubmitting(false);
+    setIsSubmittingMilestone(false);
   };
 
   const handleDeleteMilestone = async (milestoneId) => {
     if (!window.confirm("Are you sure you want to delete this milestone? This action cannot be undone.")) {
         return;
     }
-    setError('');
+    setMilestoneError('');
     try {
         const milestoneDocRef = doc(db, "milestones", milestoneId);
         await deleteDoc(milestoneDocRef);
         await fetchMilestones(); 
     } catch (err) {
         console.error("Error deleting milestone:", err);
-        setError("Failed to delete milestone. " + err.message);
+        setMilestoneError("Failed to delete milestone. " + err.message);
     }
   };
 
@@ -97,7 +124,7 @@ export default function AdminPage() {
     setEditDays(String(milestone.days)); 
     setEditTitle(milestone.title);
     setIsEditModalOpen(true);
-    setError(''); 
+    setMilestoneError(''); 
   };
 
   const handleCloseEditModal = () => {
@@ -110,17 +137,17 @@ export default function AdminPage() {
   const handleUpdateMilestone = async (e) => {
     e.preventDefault();
     if (!editingMilestone || !editDays || !editTitle.trim()) {
-        setError("Both 'Days' and 'Title' are required for editing.");
+        setMilestoneError("Both 'Days' and 'Title' are required for editing.");
         return;
     }
     const daysNum = parseInt(editDays);
     if (isNaN(daysNum) || daysNum <= 0) {
-        setError("'Days' must be a positive number for editing.");
+        setMilestoneError("'Days' must be a positive number for editing.");
         return;
     }
 
-    setIsSubmitting(true); 
-    setError('');
+    setIsSubmittingMilestone(true); 
+    setMilestoneError('');
     try {
         const milestoneDocRef = doc(db, "milestones", editingMilestone.id);
         await updateDoc(milestoneDocRef, {
@@ -131,12 +158,12 @@ export default function AdminPage() {
         handleCloseEditModal();
     } catch (err) {
         console.error("Error updating milestone:", err);
-        setError("Failed to update milestone. " + err.message);
+        setMilestoneError("Failed to update milestone. " + err.message);
     }
-    setIsSubmitting(false);
+    setIsSubmittingMilestone(false);
   };
 
-  const handleLogout = async () => { // This function will now be used by the button
+  const handleLogout = async () => {
     try {
       await auth.signOut();
     } catch (error) {
@@ -149,18 +176,21 @@ export default function AdminPage() {
       <header className="flex flex-col sm:flex-row justify-between items-center mb-10 pb-4 border-b border-slate-700">
         <h1 className="text-3xl font-bold text-sky-400 mb-4 sm:mb-0">Admin Panel</h1>
         <div>
-          {/* 'Link' is now used */}
           <Link to="/" className="text-sky-400 hover:text-sky-300 mr-4 text-sm sm:text-base">Go to App</Link>
-          {/* 'handleLogout' is now used */}
           <button onClick={handleLogout} className="text-sm sm:text-base text-red-400 hover:text-red-300">
             Log Out
           </button>
         </div>
       </header>
       
-      {error && <p className="p-3 mb-4 bg-red-500 text-white rounded text-center">{error}</p>}
+      {/* Combined Error Display Area */}
+      {(milestoneError || userListError) && 
+        <p className="p-3 mb-4 bg-red-500 text-white rounded text-center">
+            {milestoneError} {milestoneError && userListError && <br/>} {userListError}
+        </p>
+      }
 
-      {/* Section to Add New Milestone - 'handleAddMilestone' is now used by onSubmit */}
+      {/* Section to Add New Milestone */}
       <div className="bg-slate-700 p-6 rounded-lg shadow-xl mb-10">
         <h2 className="text-2xl font-semibold text-white mb-6">Add New Milestone</h2>
         <form onSubmit={handleAddMilestone} className="space-y-4">
@@ -188,18 +218,18 @@ export default function AdminPage() {
               className="w-full p-3 text-gray-200 bg-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 border border-slate-500"
             />
           </div>
-          <button type="submit" disabled={isSubmitting} className="w-full sm:w-auto py-2 px-6 bg-green-600 hover:bg-green-700 rounded-md text-white font-semibold transition-colors disabled:opacity-50">
-            {isSubmitting ? 'Adding...' : 'Add Milestone'}
+          <button type="submit" disabled={isSubmittingMilestone} className="w-full sm:w-auto py-2 px-6 bg-green-600 hover:bg-green-700 rounded-md text-white font-semibold transition-colors disabled:opacity-50">
+            {isSubmittingMilestone ? 'Adding...' : 'Add Milestone'}
           </button>
         </form>
       </div>
 
       {/* Section to Display Current Milestones */}
-      <div className="bg-slate-700 p-6 rounded-lg shadow-xl">
+      <div className="bg-slate-700 p-6 rounded-lg shadow-xl mb-10">
         <h2 className="text-2xl font-semibold text-white mb-6">Current Milestones</h2>
-        {isLoading ? (
+        {isLoadingMilestones ? (
           <p className="text-slate-300">Loading milestones...</p>
-        ) : milestones.length === 0 ? (
+        ) : milestones.length === 0 && !milestoneError ? (
           <p className="text-slate-300">No milestones found. Add some using the form above!</p>
         ) : (
           <ul className="space-y-3">
@@ -228,6 +258,34 @@ export default function AdminPage() {
           </ul>
         )}
       </div>
+
+      {/* --- NEW: Section to Display Users --- */}
+      <div className="bg-slate-700 p-6 rounded-lg shadow-xl mt-10">
+          <h2 className="text-2xl font-semibold text-white mb-6">App Users</h2>
+          {isLoadingUsers ? (
+              <p className="text-slate-300">Loading users...</p>
+          ) : allUsers.length === 0 && !userListError ? (
+              <p className="text-slate-300">No users found in the 'users' collection. Ensure you have a top-level 'users' collection where each document ID is the user's UID and contains at least an 'email' field.</p>
+          ) : (
+              <ul className="space-y-3">
+                  {allUsers.map((user) => (
+                      <li key={user.uid} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-slate-600 rounded-md border border-slate-500">
+                          <div className="mb-2 sm:mb-0">
+                              <p className="font-semibold text-lg">{user.email || "No email provided"}</p>
+                              <p className="text-xs text-slate-400">UID: {user.uid}</p>
+                          </div>
+                          <Link 
+                              to={`/admin/user/${user.uid}`} 
+                              className="text-xs py-1 px-3 bg-sky-600 hover:bg-sky-700 rounded-md text-white font-semibold transition-colors self-end sm:self-center"
+                          >
+                              View Details
+                          </Link>
+                      </li>
+                  ))}
+              </ul>
+          )}
+      </div>
+
 
       {/* Modal for Editing Milestones */}
       {editingMilestone && (
@@ -259,8 +317,8 @@ export default function AdminPage() {
                 <button type="button" onClick={handleCloseEditModal} className="py-2 px-4 bg-slate-500 hover:bg-slate-600 rounded-md text-white font-semibold transition-colors">
                     Cancel
                 </button>
-                <button type="submit" disabled={isSubmitting} className="py-2 px-4 bg-sky-600 hover:bg-sky-700 rounded-md text-white font-semibold transition-colors disabled:opacity-50">
-                    {isSubmitting ? 'Saving...' : 'Save Changes'}
+                <button type="submit" disabled={isSubmittingMilestone} className="py-2 px-4 bg-sky-600 hover:bg-sky-700 rounded-md text-white font-semibold transition-colors disabled:opacity-50">
+                    {isSubmittingMilestone ? 'Saving...' : 'Save Changes'}
                 </button>
             </div>
           </form>

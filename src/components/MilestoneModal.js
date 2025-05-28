@@ -1,9 +1,8 @@
-// src/components/MilestoneModal.js
 import React from 'react';
 
 // A simple confetti piece component
-const ConfettiPiece = ({ style, className }) => ( // Added className to props
-  <div className={`absolute w-2 h-4 ${className}`} style={style}></div> // Used className prop
+const ConfettiPiece = ({ style, className }) => (
+  <div className={`absolute w-2 h-4 ${className}`} style={style}></div>
 );
 
 // The main modal component
@@ -44,7 +43,10 @@ export default function MilestoneModal({ milestone, onClose }) {
           <p className="text-4xl md:text-5xl font-bold text-white my-4">{milestone.title}</p>
           <p className="text-lg text-slate-300">You've reached an incredible milestone. Keep up the amazing work!</p>
           <button
-            onClick={onClose}
+            onClick={() => {
+              console.log("MilestoneModal: 'Continue' button clicked. Calling onClose prop."); // Debugging log
+              onClose(); // This calls handleCloseMilestoneModal from SobrietyTracker
+            }}
             className="mt-8 w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors shadow-md hover:shadow-lg"
           >
             Continue
