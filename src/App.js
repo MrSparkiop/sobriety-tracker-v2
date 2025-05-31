@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -5,20 +6,24 @@ import Register from './components/Register';
 import Login from './components/Login';
 import SobrietyTracker from './components/SobrietyTracker';
 import ProtectedRoute from './components/ProtectedRoute';
-import AdminPage from './components/AdminPage'; 
-import AdminProtectedRoute from './components/AdminProtectedRoute'; 
-import AdminUserDetailPage from './components/AdminUserDetailPage'; // <-- NEW IMPORT
+import AdminPage from './components/AdminPage';
+import AdminProtectedRoute from './components/AdminProtectedRoute';
+import AdminUserDetailPage from './components/AdminUserDetailPage';
+
+// Import the Sentry HOC for React Router v6
+import { withSentryReactRouterV6Routing } from '@sentry/react';
+
+// Create a Sentry-instrumented version of Routes
+const SentryInstrumentedRoutes = withSentryReactRouterV6Routing(Routes);
 
 function App() {
   return (
     <AuthProvider>
-      <Router basename="/sobriety-tracker-v2"> {/* Ensure basename is correct if deploying to a subfolder */}
-        <Routes>
-          {/* Public Routes */}
+      <Router basename="/sobriety-tracker-v2">
+        {/* Use the Sentry-instrumented Routes component */}
+        <SentryInstrumentedRoutes>
           <Route path="/register" element={<Register />} />
           <Route path="/login" element={<Login />} />
-
-          {/* Protected User Route */}
           <Route
             path="/"
             element={
@@ -27,8 +32,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* Protected Admin Routes */}
           <Route
             path="/admin"
             element={
@@ -38,14 +41,15 @@ function App() {
             }
           />
           <Route
-            path="/admin/user/:viewUserId" // :viewUserId is a URL parameter
+            path="/admin/user/:viewUserId"
             element={
-              <AdminProtectedRoute> {/* Ensures only admins can see this detailed page */}
+              <AdminProtectedRoute>
                 <AdminUserDetailPage />
               </AdminProtectedRoute>
             }
           />
-        </Routes>
+          {/* <Route path="*" element={<NotFoundPage />} /> */}
+        </SentryInstrumentedRoutes>
       </Router>
     </AuthProvider>
   );

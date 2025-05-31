@@ -36,7 +36,7 @@ export default function SobrietyTracker() {
   const [milestoneToShow, setMilestoneToShow] = useState(null);
   const [journalEntries, setJournalEntries] = useState([]);
   const [newJournalEntry, setNewJournalEntry] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); 
   const [error, setError] = useState(null);
   const [isStartDateModalOpen, setIsStartDateModalOpen] = useState(false);
   const [isJournalModalOpen, setIsJournalModalOpen] = useState(false);
@@ -77,6 +77,7 @@ export default function SobrietyTracker() {
     return () => clearInterval(interval);
   }, [sobrietyStartDate, calculateDuration]);
 
+  // Fetch Global Milestones
   useEffect(() => {
     if (!currentUser) return; 
     const fetchMilestones = async () => {
@@ -97,16 +98,16 @@ export default function SobrietyTracker() {
     fetchMilestones();
   }, [currentUser]);
 
+  // Fetch User Profile Data and Check Milestones
   useEffect(() => {
-    if (!currentUser || dbMilestones.length === 0) {
-        setIsLoading(false); 
+    if (!currentUser || dbMilestones.length === 0) { 
+        setIsLoading(false);
         return;
     }
     
     setIsLoading(true); 
     const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
-    const journalCollectionRef = collection(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`);
-
+    
     const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -129,8 +130,7 @@ export default function SobrietyTracker() {
 
                 if (unseenMilestones.length > 0) {
                     const latestUnseenMilestone = unseenMilestones.sort((a, b) => b.days - a.days)[0];
-                     // Only set if it's a new milestone or different from current one being shown
-                    if (!milestoneToShow || (milestoneToShow && milestoneToShow.days !== latestUnseenMilestone.days)) {
+                     if (!milestoneToShow || (milestoneToShow && milestoneToShow.days !== latestUnseenMilestone.days)) {
                          setMilestoneToShow(latestUnseenMilestone);
                     }
                 }
@@ -148,6 +148,8 @@ export default function SobrietyTracker() {
         setIsLoading(false);
     });
 
+    // Journal Listener
+    const journalCollectionRef = collection(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`);
     const unsubscribeJournal = onSnapshot(journalCollectionRef, (querySnapshot) => {
         const entries = [];
         querySnapshot.forEach((doc) => {
@@ -163,6 +165,7 @@ export default function SobrietyTracker() {
     };
   }, [currentUser, calculateDuration, dbMilestones, milestoneToShow]);
 
+  // Check for today's mood check-in
   useEffect(() => {
     if (!currentUser) {
         setIsLoadingCheckinStatus(false);
@@ -191,29 +194,17 @@ export default function SobrietyTracker() {
     checkTodaysCheckin();
   }, [currentUser]); 
 
-  // --- `handleCloseMilestoneModal` with DEBUGGING LOGS ---
   const handleCloseMilestoneModal = async () => {
-    console.log("SobrietyTracker: handleCloseMilestoneModal called. Current milestoneToShow:", milestoneToShow); 
-
-    if (!milestoneToShow || !currentUser) {
-      console.log("SobrietyTracker: handleCloseMilestoneModal returning early - no milestone or user."); 
-      return;
-    }
-
+    if (!milestoneToShow || !currentUser) return;
     const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
     try {
-        console.log("SobrietyTracker: Trying to update Firestore for milestone (days):", milestoneToShow.days); 
         await updateDoc(userDocRef, {
             achievedMilestones: arrayUnion(milestoneToShow.days)
         });
-        console.log("SobrietyTracker: Firestore updated. Attempting to set milestoneToShow to null."); 
         setMilestoneToShow(null);
-        console.log("SobrietyTracker: milestoneToShow should be null now (after try)."); 
     } catch (error) {
-        console.error("Error updating milestones in Firestore:", error); 
-        console.log("SobrietyTracker: Error occurred. Attempting to set milestoneToShow to null anyway."); 
+        console.error("Error updating milestones in Firestore:", error);
         setMilestoneToShow(null);
-        console.log("SobrietyTracker: milestoneToShow should be null now (after catch)."); 
     }
   };
 
@@ -273,6 +264,12 @@ export default function SobrietyTracker() {
       setHasCheckedInToday(true);
   };
   
+  // REMOVED: handleTestError function
+  // const handleTestError = () => {
+  //   console.log("Attempting to trigger Sentry error...");
+  //   throw new Error("Sentry Test Error from Sobriety Tracker App - " + new Date().toISOString());
+  // };
+
   const isPageLoading = isLoading || isLoadingCheckinStatus;
 
   if (isPageLoading && !error) {
@@ -330,6 +327,7 @@ export default function SobrietyTracker() {
 
           {sobrietyStartDate && (
               <>
+                  {/* Timer Display Section */}
                   <div className="mb-8 p-6 bg-slate-800/50 backdrop-blur-sm rounded-xl shadow-2xl border border-white/10">
                       <div className="flex justify-between items-center mb-6">
                           <h2 className="text-2xl font-semibold text-green-400">Time Sober</h2>
@@ -347,6 +345,7 @@ export default function SobrietyTracker() {
                       </div>
                   </div>
 
+                  {/* Mood Check-in Section */}
                   {sobrietyStartDate && !isLoadingCheckinStatus && !hasCheckedInToday && (
                       <div className="my-10"> 
                           <MoodCheckin userId={currentUser.uid} onCheckinSaved={handleCheckinSaved} />
@@ -358,6 +357,7 @@ export default function SobrietyTracker() {
                       </div>
                   )}
 
+                  {/* My Milestones Section */}
                   <div className="mt-10 p-6 bg-slate-800 rounded-xl shadow-2xl">
                       <h2 className="text-2xl font-semibold text-amber-400 mb-6">My Milestones</h2>
                       {displayableMilestones.length > 0 ? (
@@ -383,6 +383,7 @@ export default function SobrietyTracker() {
                       )}
                   </div>
 
+                  {/* Journal Section */}
                   <div className="mt-10 p-6 bg-slate-800 rounded-xl shadow-2xl">
                       <div className="flex justify-between items-center mb-6">
                           <h2 className="text-2xl font-semibold text-sky-400">My Journal</h2>
@@ -405,6 +406,15 @@ export default function SobrietyTracker() {
                   </div>
               </>
           )}
+
+          {/* REMOVED: Temporary Sentry Test Error Button from JSX */}
+          {/* <button 
+            onClick={handleTestError}
+            className="fixed bottom-4 right-4 z-[100] p-3 ..."
+          >
+            Trigger Sentry Test Error
+          </button>
+          */}
 
           <Modal isOpen={isStartDateModalOpen} onClose={() => setIsStartDateModalOpen(false)} title="Set Sobriety Start Date">
                 <div className="space-y-4">
