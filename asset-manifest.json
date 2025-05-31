@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/sobriety-tracker-v2/static/css/main.cf900bee.css",
-    "main.js": "/sobriety-tracker-v2/static/js/main.217a9218.js",
+    "main.css": "/sobriety-tracker-v2/static/css/main.054466ef.css",
+    "main.js": "/sobriety-tracker-v2/static/js/main.3d67635d.js",
     "static/js/453.b8d8bde2.chunk.js": "/sobriety-tracker-v2/static/js/453.b8d8bde2.chunk.js",
     "index.html": "/sobriety-tracker-v2/index.html",
-    "main.cf900bee.css.map": "/sobriety-tracker-v2/static/css/main.cf900bee.css.map",
-    "main.217a9218.js.map": "/sobriety-tracker-v2/static/js/main.217a9218.js.map",
+    "main.054466ef.css.map": "/sobriety-tracker-v2/static/css/main.054466ef.css.map",
+    "main.3d67635d.js.map": "/sobriety-tracker-v2/static/js/main.3d67635d.js.map",
     "453.b8d8bde2.chunk.js.map": "/sobriety-tracker-v2/static/js/453.b8d8bde2.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.cf900bee.css",
-    "static/js/main.217a9218.js"
+    "static/css/main.054466ef.css",
+    "static/js/main.3d67635d.js"
   ]
 }
