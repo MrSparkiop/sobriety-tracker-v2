@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom'; // Link is used for navigation
 import { useAuth } from '../context/AuthContext';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { app } from '../firebaseConfig';
-import Modal from './Modal'; // Assuming Modal.js is in the same components folder
-
-const db = getFirestore(app);
+import { api } from '../apiClient';
+import Modal from './Modal';
 
 export default function AdminPage() {
   const { auth } = useAuth();
@@ -33,17 +30,11 @@ export default function AdminPage() {
     setIsLoadingMilestones(true);
     setMilestoneError('');
     try {
-      const milestonesCollectionRef = collection(db, "milestones");
-      const q = query(milestonesCollectionRef, orderBy("days", "asc"));
-      const querySnapshot = await getDocs(q);
-      const milestonesData = [];
-      querySnapshot.forEach((doc) => {
-        milestonesData.push({ id: doc.id, ...doc.data() });
-      });
-      setMilestones(milestonesData);
-    } catch (err) {
-      console.error("Error fetching milestones:", err);
-      setMilestoneError("Failed to load milestones. " + err.message);
+      const data = await api.getMilestones();
+      setMilestones(data || []);
+    } catch (error) {
+      console.error('Error fetching milestones:', error);
+      setMilestoneError('Failed to load milestones.');
     }
     setIsLoadingMilestones(false);
   }, []);
@@ -53,18 +44,11 @@ export default function AdminPage() {
     setIsLoadingUsers(true);
     setUserListError('');
     try {
-        // Assuming you have a top-level 'users' collection
-        // where each document ID is the user's UID and contains at least an 'email' field.
-        const usersCollectionRef = collection(db, "users"); 
-        const querySnapshot = await getDocs(usersCollectionRef);
-        const usersData = [];
-        querySnapshot.forEach((doc) => {
-            usersData.push({ uid: doc.id, ...doc.data() });
-        });
-        setAllUsers(usersData);
-    } catch (err) {
-        console.error("Error fetching users:", err);
-        setUserListError("Failed to load users. " + err.message);
+      const data = await api.getUsers();
+      setAllUsers(data || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUserListError('Failed to load users.');
     }
     setIsLoadingUsers(false);
   }, []);
@@ -89,14 +73,10 @@ export default function AdminPage() {
     setIsSubmittingMilestone(true);
     setMilestoneError('');
     try {
-      const milestonesCollectionRef = collection(db, "milestones");
-      await addDoc(milestonesCollectionRef, {
-        days: daysNum,
-        title: newMilestoneTitle.trim(),
-      });
+      await api.addMilestone(daysNum, newMilestoneTitle.trim());
       setNewMilestoneDays('');
       setNewMilestoneTitle('');
-      await fetchMilestones(); 
+      await fetchMilestones();
     } catch (err) {
       console.error("Error adding milestone:", err);
       setMilestoneError("Failed to add milestone. " + err.message);
@@ -110,9 +90,8 @@ export default function AdminPage() {
     }
     setMilestoneError('');
     try {
-        const milestoneDocRef = doc(db, "milestones", milestoneId);
-        await deleteDoc(milestoneDocRef);
-        await fetchMilestones(); 
+        await api.deleteMilestone(milestoneId);
+        await fetchMilestones();
     } catch (err) {
         console.error("Error deleting milestone:", err);
         setMilestoneError("Failed to delete milestone. " + err.message);
@@ -149,11 +128,7 @@ export default function AdminPage() {
     setIsSubmittingMilestone(true); 
     setMilestoneError('');
     try {
-        const milestoneDocRef = doc(db, "milestones", editingMilestone.id);
-        await updateDoc(milestoneDocRef, {
-            days: daysNum,
-            title: editTitle.trim()
-        });
+        await api.updateMilestone(editingMilestone.id, daysNum, editTitle.trim());
         await fetchMilestones();
         handleCloseEditModal();
     } catch (err) {

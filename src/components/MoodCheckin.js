@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
-import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { app } from '../firebaseConfig'; // Assuming this is the path to your Firebase init
-
-const db = getFirestore(app);
+import { api } from '../apiClient';
 
 const MOOD_OPTIONS = [
   { name: 'Great', emoji: '😄', color: 'bg-green-500 hover:bg-green-600', value: 'great' },
@@ -41,15 +38,12 @@ export default function MoodCheckin({ userId, onCheckinSaved }) {
     setIsSubmitting(true);
 
     const todayDateString = getTodayDateString();
-    // Path: users/{userId}/moodCheckins/{YYYY-MM-DD}
-    const checkinDocRef = doc(db, `artifacts/default-sobriety-app/users/${userId}/moodCheckins`, todayDateString);
-
     try {
-      await setDoc(checkinDocRef, {
-        mood: selectedMood,
-        note: note.trim(),
-        dateString: todayDateString,
-        timestamp: serverTimestamp(),
+      await api.saveMoodCheckin(userId, {
+          date_string: todayDateString,
+          mood: selectedMood,
+          note: note.trim(),
+          timestamp: new Date(),
       });
       onCheckinSaved(); // Notify parent that check-in was saved
       setSelectedMood(null);

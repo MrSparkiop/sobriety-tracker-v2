@@ -1,29 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-    getFirestore, 
-    doc, 
-    setDoc, 
-    onSnapshot, 
-    collection, 
-    addDoc, 
-    serverTimestamp, 
-    deleteDoc, 
-    updateDoc, 
-    arrayUnion, 
-    getDocs, 
-    getDoc,
-    query, 
-    orderBy 
-} from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { app } from '../firebaseConfig';
+import { api } from '../apiClient';
 import MilestoneModal from './MilestoneModal';
 import Modal from './Modal';
 import TimerCard from './TimerCard';
 import JournalEntryCard from './JournalEntryCard';
 import MoodCheckin from './MoodCheckin';
 
-const db = getFirestore(app);
 const appId = 'default-sobriety-app';
 
 export default function SobrietyTracker() {
@@ -79,20 +62,14 @@ export default function SobrietyTracker() {
 
   // Fetch Global Milestones
   useEffect(() => {
-    if (!currentUser) return; 
+    if (!currentUser) return;
     const fetchMilestones = async () => {
       try {
-        const milestonesCollectionRef = collection(db, "milestones");
-        const q = query(milestonesCollectionRef, orderBy("days", "asc"));
-        const querySnapshot = await getDocs(q);
-        const milestonesData = [];
-        querySnapshot.forEach((doc) => {
-          milestonesData.push({ id: doc.id, ...doc.data() });
-        });
-        setDbMilestones(milestonesData);
+        const data = await api.getMilestones();
+        setDbMilestones(data || []);
       } catch (err) {
-        console.error("Error fetching milestones:", err);
-        setError("Failed to load milestones configuration.");
+        console.error('Error fetching milestones:', err);
+        setError('Failed to load milestones configuration.');
       }
     };
     fetchMilestones();
@@ -105,64 +82,48 @@ export default function SobrietyTracker() {
         return;
     }
     
-    setIsLoading(true); 
-    const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
-    
-    const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            const previouslyAchievedDays = data.achievedMilestones || [];
-            setAchievedMilestonesDays(previouslyAchievedDays);
+    setIsLoading(true);
+    const fetchData = async () => {
+      const profile = await api.getProfile(currentUser.id);
 
-            if (data.startDate) {
-                setSobrietyStartDate(data.startDate);
-                setInputStartDate(data.startDate);
-                const currentDuration = calculateDuration(data.startDate);
-                setDuration(currentDuration);
+      const previouslyAchievedDays = profile?.achieved_milestones || [];
+      setAchievedMilestonesDays(previouslyAchievedDays);
 
-                const currentTotalSoberDays = Math.max(0, Math.floor((new Date() - new Date(data.startDate)) / (1000 * 60 * 60 * 24)));
-                setTotalSoberDays(currentTotalSoberDays);
+      if (profile?.start_date) {
+        setSobrietyStartDate(profile.start_date);
+        setInputStartDate(profile.start_date);
+        const currentDuration = calculateDuration(profile.start_date);
+        setDuration(currentDuration);
 
-                const unseenMilestones = dbMilestones.filter(m => 
-                    currentTotalSoberDays >= m.days && 
-                    !previouslyAchievedDays.includes(m.days) 
-                );
+        const currentTotalSoberDays = Math.max(0, Math.floor((new Date() - new Date(profile.start_date)) / (1000 * 60 * 60 * 24)));
+        setTotalSoberDays(currentTotalSoberDays);
 
-                if (unseenMilestones.length > 0) {
-                    const latestUnseenMilestone = unseenMilestones.sort((a, b) => b.days - a.days)[0];
-                     if (!milestoneToShow || (milestoneToShow && milestoneToShow.days !== latestUnseenMilestone.days)) {
-                         setMilestoneToShow(latestUnseenMilestone);
-                    }
-                }
-            } else {
-                setIsStartDateModalOpen(true);
-            }
-        } else {
-            setSobrietyStartDate('');
-            setIsStartDateModalOpen(true);
+        const unseenMilestones = dbMilestones.filter(m =>
+          currentTotalSoberDays >= m.days &&
+          !previouslyAchievedDays.includes(m.days)
+        );
+        if (unseenMilestones.length > 0) {
+          const latestUnseenMilestone = unseenMilestones.sort((a, b) => b.days - a.days)[0];
+          if (!milestoneToShow || (milestoneToShow && milestoneToShow.days !== latestUnseenMilestone.days)) {
+            setMilestoneToShow(latestUnseenMilestone);
+          }
         }
-        setIsLoading(false);
-    }, (err) => {
-        console.error("Error fetching profile:", err);
-        setError("Failed to load sobriety data. " + err.message);
-        setIsLoading(false);
-    });
+      } else {
+        setIsStartDateModalOpen(true);
+      }
 
-    // Journal Listener
-    const journalCollectionRef = collection(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`);
-    const unsubscribeJournal = onSnapshot(journalCollectionRef, (querySnapshot) => {
-        const entries = [];
-        querySnapshot.forEach((doc) => {
-            entries.push({ id: doc.id, ...doc.data() });
-        });
-        entries.sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
-        setJournalEntries(entries);
-    }, (err) => { console.error("Error fetching journal entries:", err); });
+      try {
+        const journal = await api.getJournalEntries(currentUser.id);
+        setJournalEntries(journal || []);
+      } catch (err) {
+        console.error('Error fetching journal entries:', err);
+      }
 
-    return () => {
-        unsubscribeProfile();
-        unsubscribeJournal();
+      setIsLoading(false);
     };
+
+    fetchData();
+  }, [currentUser, calculateDuration, dbMilestones, milestoneToShow]);
   }, [currentUser, calculateDuration, dbMilestones, milestoneToShow]);
 
   // Check for today's mood check-in
@@ -181,73 +142,63 @@ export default function SobrietyTracker() {
     const checkTodaysCheckin = async () => {
         setIsLoadingCheckinStatus(true);
         const todayDateString = getTodayDateString();
-        const checkinDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/moodCheckins`, todayDateString);
         try {
-            const docSnap = await getDoc(checkinDocRef);
-            setHasCheckedInToday(docSnap.exists());
-        } catch (err) {
-            console.error("Error checking for today's check-in:", err);
-            setHasCheckedInToday(false); 
+            const data = await api.getMoodCheckin(currentUser.id, todayDateString);
+            setHasCheckedInToday(!!data);
+        } catch (error) {
+            console.error("Error checking for today's check-in:", error);
+            setHasCheckedInToday(false);
         }
         setIsLoadingCheckinStatus(false);
     };
     checkTodaysCheckin();
-  }, [currentUser]); 
+  }, [currentUser]);
 
   const handleCloseMilestoneModal = async () => {
     if (!milestoneToShow || !currentUser) return;
-    const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
     try {
-        await updateDoc(userDocRef, {
-            achievedMilestones: arrayUnion(milestoneToShow.days)
-        });
+        await api.updateAchievedMilestones(currentUser.id, [...achievedMilestonesDays, milestoneToShow.days]);
         setMilestoneToShow(null);
     } catch (error) {
-        console.error("Error updating milestones in Firestore:", error);
+        console.error('Error updating milestones:', error);
         setMilestoneToShow(null);
     }
   };
 
   const handleSetStartDate = async () => {
-      if (!db || !currentUser || !inputStartDate) return;
+      if (!currentUser || !inputStartDate) return;
       try {
-          const userDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile`);
-          await setDoc(userDocRef, { startDate: inputStartDate, achievedMilestones: [] }, { merge: true });
+          await api.setStartDate(currentUser.id, inputStartDate);
           setIsStartDateModalOpen(false);
           setError(null);
-          setMilestoneToShow(null); 
+          setMilestoneToShow(null);
       } catch (e) {
-          console.error("Error saving start date:", e);
-          setError("Failed to save start date. " + e.message);
+          console.error('Error saving start date:', e);
+          setError('Failed to save start date.');
       }
   };
 
   const handleAddJournalEntry = async () => {
-      if (!db || !currentUser || !newJournalEntry.trim()) return;
+      if (!currentUser || !newJournalEntry.trim()) return;
       try {
-          const journalCollectionRef = collection(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`);
-          await addDoc(journalCollectionRef, {
-              text: newJournalEntry,
-              timestamp: serverTimestamp()
-          });
+          await api.addJournalEntry(currentUser.id, newJournalEntry);
           setNewJournalEntry('');
           setIsJournalModalOpen(false);
           setError(null);
       } catch (e) {
-          console.error("Error adding journal entry:", e);
-          setError("Failed to add journal entry. " + e.message);
+          console.error('Error adding journal entry:', e);
+          setError('Failed to add journal entry.');
       }
   };
 
   const handleDeleteJournalEntry = async (entryId) => {
-      if (!db || !currentUser || !entryId) return;
-      if (window.confirm("Are you sure you want to delete this journal entry?")) {
+      if (!currentUser || !entryId) return;
+      if (window.confirm('Are you sure you want to delete this journal entry?')) {
           try {
-              const entryDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/sobrietyData/profile/journalEntries`, entryId);
-              await deleteDoc(entryDocRef);
+              await api.deleteJournalEntry(currentUser.id, entryId);
           } catch (e) {
-              console.error("Error deleting journal entry:", e);
-              setError("Failed to delete journal entry. " + e.message);
+              console.error('Error deleting journal entry:', e);
+              setError('Failed to delete journal entry.');
           }
       }
   };
