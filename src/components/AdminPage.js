@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom'; // Link is used for navigation
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../supabaseClient';
-import Modal from './Modal'; // Assuming Modal.js is in the same components folder
-
-const db = supabase;
+import { api } from '../apiClient';
+import Modal from './Modal';
 
 export default function AdminPage() {
   const { auth } = useAuth();
@@ -31,15 +29,12 @@ export default function AdminPage() {
   const fetchMilestones = useCallback(async () => {
     setIsLoadingMilestones(true);
     setMilestoneError('');
-    const { data, error } = await db
-      .from('milestones')
-      .select('*')
-      .order('days', { ascending: true });
-    if (error) {
-      console.error('Error fetching milestones:', error);
-      setMilestoneError('Failed to load milestones. ' + error.message);
-    } else {
+    try {
+      const data = await api.getMilestones();
       setMilestones(data || []);
+    } catch (error) {
+      console.error('Error fetching milestones:', error);
+      setMilestoneError('Failed to load milestones.');
     }
     setIsLoadingMilestones(false);
   }, []);
@@ -48,12 +43,12 @@ export default function AdminPage() {
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true);
     setUserListError('');
-    const { data, error } = await db.from('users').select('*');
-    if (error) {
-      console.error('Error fetching users:', error);
-      setUserListError('Failed to load users. ' + error.message);
-    } else {
+    try {
+      const data = await api.getUsers();
       setAllUsers(data || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUserListError('Failed to load users.');
     }
     setIsLoadingUsers(false);
   }, []);
@@ -78,10 +73,7 @@ export default function AdminPage() {
     setIsSubmittingMilestone(true);
     setMilestoneError('');
     try {
-      await db.from('milestones').insert({
-        days: daysNum,
-        title: newMilestoneTitle.trim(),
-      });
+      await api.addMilestone(daysNum, newMilestoneTitle.trim());
       setNewMilestoneDays('');
       setNewMilestoneTitle('');
       await fetchMilestones();
@@ -98,7 +90,7 @@ export default function AdminPage() {
     }
     setMilestoneError('');
     try {
-        await db.from('milestones').delete().eq('id', milestoneId);
+        await api.deleteMilestone(milestoneId);
         await fetchMilestones();
     } catch (err) {
         console.error("Error deleting milestone:", err);
@@ -136,10 +128,7 @@ export default function AdminPage() {
     setIsSubmittingMilestone(true); 
     setMilestoneError('');
     try {
-        await db
-          .from('milestones')
-          .update({ days: daysNum, title: editTitle.trim() })
-          .eq('id', editingMilestone.id);
+        await api.updateMilestone(editingMilestone.id, daysNum, editTitle.trim());
         await fetchMilestones();
         handleCloseEditModal();
     } catch (err) {

@@ -13,13 +13,13 @@ You can view the live application here: [https://MrSparkiop.github.io/sobriety-t
 * **Real-Time Sobriety Timer:** Displays sobriety duration counting up in Years, Months, Days, Hours, Minutes, and Seconds.
 * **Milestone Celebrations:** Automatic pop-up celebrations for achieving sobriety milestones (e.g., 1 day, 1 week, 30 days, 1 year).
 * **Journaling:** Users can write and save journal entries related to their journey.
-* **Data Persistence:** All user data is securely stored and managed with Supabase.
+* **Data Persistence:** All user data is managed by a custom Express API.
 * **Customizable Error Messages:** Specific feedback for events like a disabled user account trying to log in.
 
 ## Technologies Used
 
 * **Frontend:** React.js
-* **Backend & Database:** Supabase (Authentication, Database)
+* **Backend:** Custom Express API
 * **Styling:** Tailwind CSS
 * **Routing:** React Router
 * **Deployment:** GitHub Pages
@@ -37,15 +37,10 @@ If you want to run this project locally:
     ```bash
     npm install
     ```
-3.  **Supabase Configuration:**
-    * Create a project at [https://app.supabase.com/](https://app.supabase.com/).
-    * Note your project's `SUPABASE_URL` and `anon` key.
-    * In the project settings create tables matching the application needs (`users`, `sobriety_profiles`, `journal_entries`, `milestones`, `mood_checkins`).
-    * Create a `.env` file in the project root containing:
-        ```bash
-        REACT_APP_SUPABASE_URL=your_supabase_url
-        REACT_APP_SUPABASE_ANON_KEY=your_anon_key
-        ```
+3.  **Start the API server:**
+    ```bash
+    cd functions && npm install && node index.js
+    ```
 4.  **Start the development server:**
     ```bash
     npm start

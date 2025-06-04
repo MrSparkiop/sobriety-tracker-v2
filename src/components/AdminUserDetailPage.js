@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { api } from '../apiClient';
 import { useAuth } from '../context/AuthContext';
 
-const db = supabase;
-const appId = 'default-sobriety-app'; // Ensure this matches your SobrietyTracker.js
+const appId = 'default-sobriety-app';
 
 export default function AdminUserDetailPage() {
     const { viewUserId } = useParams(); // Get the userId from the URL parameter
@@ -34,43 +33,30 @@ export default function AdminUserDetailPage() {
         // Combined function to fetch all data for the user
         const fetchDataForUser = async () => {
             try {
-                const { data: userRow, error: userErr } = await db.from('users').select('*').eq('id', viewUserId).single();
+                const userRow = await api.getUser(viewUserId);
                 if (active) {
                     if (userRow) {
                         setUserData({ uid: userRow.id, ...userRow });
                     } else {
-                        console.warn("User record not found for UID:", viewUserId);
-                        setUserData({ uid: viewUserId, email: "N/A (No /users doc)", isDisabledByAdmin: false });
+                        console.warn('User record not found for UID:', viewUserId);
+                        setUserData({ uid: viewUserId, email: 'N/A', isDisabledByAdmin: false });
                     }
                 }
 
-                const { data: profileRow } = await db
-                    .from('sobriety_profiles')
-                    .select('*')
-                    .eq('user_id', viewUserId)
-                    .single();
+                const profileRow = await api.getProfile(viewUserId);
                 if (active) {
                     setUserSobrietyProfile(profileRow || null);
                 }
 
-                const { data: journalRows, error: journalErr } = await db
-                    .from('journal_entries')
-                    .select('*')
-                    .eq('user_id', viewUserId)
-                    .order('timestamp', { ascending: false });
+                const journalRows = await api.getJournalEntries(viewUserId);
                 if (active) {
-                    if (!journalErr) {
-                        setUserJournalEntries(journalRows || []);
-                    } else {
-                        console.error('Error fetching journal entries:', journalErr);
-                        setError(prev => prev + ' Failed to load journal entries.');
-                    }
+                    setUserJournalEntries(journalRows || []);
                     setIsLoading(false);
                 }
             } catch (err) {
                 if (!active) return;
                 console.error('Error fetching user details:', err);
-                setError('Failed to load some user details. ' + err.message);
+                setError('Failed to load some user details.');
                 setIsLoading(false);
             }
         };
@@ -98,18 +84,12 @@ export default function AdminUserDetailPage() {
         setError('');
 
         try {
-            const response = await fetch('/toggleUserActivation', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: userData.uid, disable: targetDisabledStatus })
-            });
-            const result = await response.json();
-
+            const result = await api.toggleUserActivation(userData.uid, targetDisabledStatus);
             if (result.success) {
                 setActionMessage(String(result.message));
-                const { data, error } = await db.from('users').select('*').eq('id', userData.uid).single();
-                if (!error && data) {
-                    setUserData({ uid: data.id, ...data });
+                const refreshed = await api.getUser(userData.uid);
+                if (refreshed) {
+                    setUserData({ uid: refreshed.id, ...refreshed });
                 }
             } else {
                 setError(String(result.message) || `Failed to ${action} user.`);

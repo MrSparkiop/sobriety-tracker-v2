@@ -1,6 +1,6 @@
 {
   "name": "functions",
-  "description": "Express API for Supabase",
+  "description": "Custom Express API",
   "scripts": {
     "start": "node index.js"
 },
@@ -9,8 +9,9 @@
   },
   "main": "index.js",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.19.2",
-    "@supabase/supabase-js": "^2.49.10"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "eslint": "^8.15.0",

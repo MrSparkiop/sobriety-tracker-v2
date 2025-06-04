@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../supabaseClient';
+import { api } from '../apiClient';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -22,23 +22,11 @@ export default function Register() {
   try {
       setError('');
       setLoading(true);
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
-      if (signUpError) throw signUpError;
-      const user = data.user;
-      if (user) {
-        await supabase.from('users').insert({ id: user.id, email, created_at: new Date() });
-      }
-
-      navigate('/'); // Redirect to the dashboard after successful registration
+      await api.register(email, password);
+      navigate('/');
     } catch (err) {
-      if (err.code === 'auth/email-already-in-use') {
-        setError('This email address is already in use.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('Password should be at least 6 characters.');
-      } else {
-        setError('Failed to create an account. Please try again.');
-      }
-      console.error("Registration error: ", err);
+      setError('Failed to create an account.');
+      console.error('Registration error:', err);
     }
     setLoading(false);
   }

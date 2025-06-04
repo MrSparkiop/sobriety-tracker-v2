@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../supabaseClient';
-
-const db = supabase;
+import { api } from '../apiClient';
 
 const MOOD_OPTIONS = [
   { name: 'Great', emoji: '😄', color: 'bg-green-500 hover:bg-green-600', value: 'great' },
@@ -41,15 +39,12 @@ export default function MoodCheckin({ userId, onCheckinSaved }) {
 
     const todayDateString = getTodayDateString();
     try {
-      await db
-        .from('mood_checkins')
-        .upsert({
-          user_id: userId,
+      await api.saveMoodCheckin(userId, {
           date_string: todayDateString,
           mood: selectedMood,
           note: note.trim(),
           timestamp: new Date(),
-        });
+      });
       onCheckinSaved(); // Notify parent that check-in was saved
       setSelectedMood(null);
       setNote('');

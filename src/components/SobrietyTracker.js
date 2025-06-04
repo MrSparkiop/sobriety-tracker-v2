@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../supabaseClient';
+import { api } from '../apiClient';
 import MilestoneModal from './MilestoneModal';
 import Modal from './Modal';
 import TimerCard from './TimerCard';
 import JournalEntryCard from './JournalEntryCard';
 import MoodCheckin from './MoodCheckin';
 
-const db = supabase;
 const appId = 'default-sobriety-app';
 
 export default function SobrietyTracker() {
@@ -65,15 +64,12 @@ export default function SobrietyTracker() {
   useEffect(() => {
     if (!currentUser) return;
     const fetchMilestones = async () => {
-      const { data, error } = await db
-        .from('milestones')
-        .select('*')
-        .order('days', { ascending: true });
-      if (error) {
-        console.error('Error fetching milestones:', error);
-        setError('Failed to load milestones configuration.');
-      } else {
+      try {
+        const data = await api.getMilestones();
         setDbMilestones(data || []);
+      } catch (err) {
+        console.error('Error fetching milestones:', err);
+        setError('Failed to load milestones configuration.');
       }
     };
     fetchMilestones();
@@ -88,18 +84,7 @@ export default function SobrietyTracker() {
     
     setIsLoading(true);
     const fetchData = async () => {
-      const { data: profile, error: profileErr } = await db
-        .from('sobriety_profiles')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .single();
-
-      if (profileErr && profileErr.code !== 'PGRST116') {
-        console.error('Error fetching profile:', profileErr);
-        setError('Failed to load sobriety data. ' + profileErr.message);
-        setIsLoading(false);
-        return;
-      }
+      const profile = await api.getProfile(currentUser.id);
 
       const previouslyAchievedDays = profile?.achieved_milestones || [];
       setAchievedMilestonesDays(previouslyAchievedDays);
@@ -127,15 +112,11 @@ export default function SobrietyTracker() {
         setIsStartDateModalOpen(true);
       }
 
-      const { data: journal, error: journalErr } = await db
-        .from('journal_entries')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('timestamp', { ascending: false });
-      if (!journalErr) {
+      try {
+        const journal = await api.getJournalEntries(currentUser.id);
         setJournalEntries(journal || []);
-      } else {
-        console.error('Error fetching journal entries:', journalErr);
+      } catch (err) {
+        console.error('Error fetching journal entries:', err);
       }
 
       setIsLoading(false);
@@ -161,17 +142,12 @@ export default function SobrietyTracker() {
     const checkTodaysCheckin = async () => {
         setIsLoadingCheckinStatus(true);
         const todayDateString = getTodayDateString();
-        const { data, error } = await db
-          .from('mood_checkins')
-          .select('id')
-          .eq('user_id', currentUser.id)
-          .eq('date_string', todayDateString)
-          .single();
-        if (error && error.code !== 'PGRST116') {
+        try {
+            const data = await api.getMoodCheckin(currentUser.id, todayDateString);
+            setHasCheckedInToday(!!data);
+        } catch (error) {
             console.error("Error checking for today's check-in:", error);
             setHasCheckedInToday(false);
-        } else {
-            setHasCheckedInToday(!!data);
         }
         setIsLoadingCheckinStatus(false);
     };
@@ -181,10 +157,7 @@ export default function SobrietyTracker() {
   const handleCloseMilestoneModal = async () => {
     if (!milestoneToShow || !currentUser) return;
     try {
-        await db
-          .from('sobriety_profiles')
-          .update({ achieved_milestones: [...achievedMilestonesDays, milestoneToShow.days] })
-          .eq('user_id', currentUser.id);
+        await api.updateAchievedMilestones(currentUser.id, [...achievedMilestonesDays, milestoneToShow.days]);
         setMilestoneToShow(null);
     } catch (error) {
         console.error('Error updating milestones:', error);
@@ -193,47 +166,39 @@ export default function SobrietyTracker() {
   };
 
   const handleSetStartDate = async () => {
-      if (!db || !currentUser || !inputStartDate) return;
+      if (!currentUser || !inputStartDate) return;
       try {
-          await db
-            .from('sobriety_profiles')
-            .upsert({ user_id: currentUser.id, start_date: inputStartDate, achieved_milestones: [] });
+          await api.setStartDate(currentUser.id, inputStartDate);
           setIsStartDateModalOpen(false);
           setError(null);
           setMilestoneToShow(null);
       } catch (e) {
           console.error('Error saving start date:', e);
-          setError('Failed to save start date. ' + e.message);
+          setError('Failed to save start date.');
       }
   };
 
   const handleAddJournalEntry = async () => {
-      if (!db || !currentUser || !newJournalEntry.trim()) return;
+      if (!currentUser || !newJournalEntry.trim()) return;
       try {
-          await db
-            .from('journal_entries')
-            .insert({ user_id: currentUser.id, text: newJournalEntry, timestamp: new Date() });
+          await api.addJournalEntry(currentUser.id, newJournalEntry);
           setNewJournalEntry('');
           setIsJournalModalOpen(false);
           setError(null);
       } catch (e) {
-          console.error("Error adding journal entry:", e);
-          setError("Failed to add journal entry. " + e.message);
+          console.error('Error adding journal entry:', e);
+          setError('Failed to add journal entry.');
       }
   };
 
   const handleDeleteJournalEntry = async (entryId) => {
-      if (!db || !currentUser || !entryId) return;
-      if (window.confirm("Are you sure you want to delete this journal entry?")) {
+      if (!currentUser || !entryId) return;
+      if (window.confirm('Are you sure you want to delete this journal entry?')) {
           try {
-              await db
-                .from('journal_entries')
-                .delete()
-                .eq('id', entryId)
-                .eq('user_id', currentUser.id);
+              await api.deleteJournalEntry(currentUser.id, entryId);
           } catch (e) {
-              console.error("Error deleting journal entry:", e);
-              setError("Failed to delete journal entry. " + e.message);
+              console.error('Error deleting journal entry:', e);
+              setError('Failed to delete journal entry.');
           }
       }
   };
