@@ -1,85 +1,27 @@
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 
-admin.initializeApp();
+const app = express();
+app.use(express.json());
 
-// --- DEFINE YOUR ADMIN EMAIL HERE ---
-// This email is authorized to call this function.
-// For production, use Firebase Custom Claims for roles.
-const ADMIN_EMAIL = "blagoyhristov03@gmail.com"; // Admin email
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-/**
- * Toggles a user's disabled status in Firebase Authentication
- * and updates a corresponding flag in their Firestore document.
- *
- * @param {object} data - The data passed to the function.
- * @param {string} data.uid - The UID of the user to update.
- * @param {boolean} data.disable - True to disable the user, false to enable.
- * @param {object} context - The context of the function call.
- * @param {object} context.auth - Auth info about the calling user.
- * @returns {Promise<{success: boolean, message: string}>} Result.
- */
-exports.toggleUserActivation = functions.https.onCall(async (data, context) => {
-  // 1. Authentication Check: Ensure the caller is an admin.
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-        "unauthenticated",
-        "The function must be called while authenticated.",
-    );
+app.post('/toggleUserActivation', async (req, res) => {
+  const { uid, disable } = req.body;
+  if (!uid || typeof disable !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'Invalid parameters' });
   }
-
-  const callerEmail = context.auth.token.email;
-  if (callerEmail !== ADMIN_EMAIL) {
-    throw new functions.https.HttpsError(
-        "permission-denied",
-        "You must be an admin to perform this action.",
-    );
-  }
-
-  // 2. Input Validation
-  const {uid, disable} = data;
-
-  if (!uid || typeof uid !== "string") {
-    throw new functions.https.HttpsError(
-        "invalid-argument",
-        "The function must be called with a 'uid' (string) argument.",
-    );
-  }
-  if (typeof disable !== "boolean") {
-    throw new functions.https.HttpsError(
-        "invalid-argument",
-        "The function must be called with a 'disable' (boolean) argument.",
-    );
-  }
-
   try {
-    // 3. Update Firebase Authentication user record
-    await admin.auth().updateUser(uid, {
-      disabled: disable,
-    });
-
-    // 4. Update the 'isDisabledByAdmin' flag in the user's Firestore document
-    const userFirestoreRef = admin.firestore().collection("users").doc(uid);
-    await userFirestoreRef.set(
-        {isDisabledByAdmin: disable},
-        {merge: true},
-    );
-
-    const action = disable ? "disabled" : "enabled";
-    const successMessage = `User ${uid} has been successfully ${action}.`;
-    console.log(`${successMessage} by admin ${callerEmail}.`);
-    return {
-      success: true,
-      message: successMessage,
-    };
+    await supabase.auth.admin.updateUserById(uid, { disabled: disable });
+    await supabase.from('users').update({ is_disabled_by_admin: disable }).eq('id', uid);
+    res.json({ success: true, message: `User ${uid} has been ${disable ? 'disabled' : 'enabled'}.` });
   } catch (error) {
-    const errorMessage = `Failed to toggle user activation for ${uid}.`;
-    console.error(`${errorMessage} Error:`, error);
-    throw new functions.https.HttpsError(
-        "internal",
-        `${errorMessage} ${error.message}`,
-    );
+    console.error('Error toggling user:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ENSURE THERE IS AN EMPTY LINE AFTER THIS COMMENT
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

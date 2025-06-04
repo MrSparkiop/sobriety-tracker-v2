@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getFirestore, doc, getDoc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions'; // For calling Cloud Functions
-import { app } from '../firebaseConfig'; // Your Firebase app instance
+import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 
-const db = getFirestore(app);
-const functions = getFunctions(app); // Initialize Firebase Functions
+const db = supabase;
 const appId = 'default-sobriety-app'; // Ensure this matches your SobrietyTracker.js
 
 export default function AdminUserDetailPage() {
@@ -37,56 +34,43 @@ export default function AdminUserDetailPage() {
         // Combined function to fetch all data for the user
         const fetchDataForUser = async () => {
             try {
-                // 1. Fetch basic user data (e.g., email, isDisabledByAdmin flag)
-                const userDocRef = doc(db, "users", viewUserId);
-                const userDocSnap = await getDoc(userDocRef);
-                if (active && userDocSnap.exists()) {
-                    setUserData({ uid: userDocSnap.id, ...userDocSnap.data() });
-                } else if (active) {
-                    console.warn("User document not found in 'users' collection for UID:", viewUserId);
-                    // Set a default structure if user doc doesn't exist in /users, but they exist in Auth
-                    setUserData({ uid: viewUserId, email: "N/A (No /users doc)", isDisabledByAdmin: false });
+                const { data: userRow, error: userErr } = await db.from('users').select('*').eq('id', viewUserId).single();
+                if (active) {
+                    if (userRow) {
+                        setUserData({ uid: userRow.id, ...userRow });
+                    } else {
+                        console.warn("User record not found for UID:", viewUserId);
+                        setUserData({ uid: viewUserId, email: "N/A (No /users doc)", isDisabledByAdmin: false });
+                    }
                 }
 
-                // 2. Fetch user's sobriety profile
-                const profileDocRef = doc(db, `artifacts/${appId}/users/${viewUserId}/sobrietyData/profile`);
-                const profileDocSnap = await getDoc(profileDocRef);
-                if (active && profileDocSnap.exists()) {
-                    setUserSobrietyProfile(profileDocSnap.data());
-                } else if (active) {
-                    setUserSobrietyProfile(null); 
+                const { data: profileRow } = await db
+                    .from('sobriety_profiles')
+                    .select('*')
+                    .eq('user_id', viewUserId)
+                    .single();
+                if (active) {
+                    setUserSobrietyProfile(profileRow || null);
                 }
 
-                // 3. Fetch user's journal entries (using onSnapshot for potential real-time updates)
-                // It's fine to keep this as onSnapshot, or convert to getDocs if real-time isn't critical here
-                const journalCollectionRef = collection(db, `artifacts/${appId}/users/${viewUserId}/sobrietyData/profile/journalEntries`);
-                const q = query(journalCollectionRef, orderBy("timestamp", "desc"));
-                
-                const unsubscribeJournal = onSnapshot(q, (querySnapshot) => {
-                    if (!active) return;
-                    const entries = [];
-                    querySnapshot.forEach((doc) => {
-                        entries.push({ id: doc.id, ...doc.data() });
-                    });
-                    setUserJournalEntries(entries);
-                    // Consider all data loaded once journal (last async op in this chain) is done
-                    setIsLoading(false); 
-                }, (err) => {
-                    if (!active) return;
-                    console.error("Error fetching journal entries:", err);
-                    setError(prev => prev + " Failed to load journal entries.");
+                const { data: journalRows, error: journalErr } = await db
+                    .from('journal_entries')
+                    .select('*')
+                    .eq('user_id', viewUserId)
+                    .order('timestamp', { ascending: false });
+                if (active) {
+                    if (!journalErr) {
+                        setUserJournalEntries(journalRows || []);
+                    } else {
+                        console.error('Error fetching journal entries:', journalErr);
+                        setError(prev => prev + ' Failed to load journal entries.');
+                    }
                     setIsLoading(false);
-                });
-
-                // Return only the journal unsubscribe as it's the only active listener here
-                return () => {
-                    unsubscribeJournal();
-                };
-
+                }
             } catch (err) {
                 if (!active) return;
-                console.error("Error fetching user details:", err);
-                setError("Failed to load some user details. " + err.message);
+                console.error('Error fetching user details:', err);
+                setError('Failed to load some user details. ' + err.message);
                 setIsLoading(false);
             }
         };
@@ -105,29 +89,30 @@ export default function AdminUserDetailPage() {
     const handleToggleUserActivation = async (targetDisabledStatus) => { // true to disable, false to enable
         if (!userData) return;
         const action = targetDisabledStatus ? "disable" : "enable";
-        if (!window.confirm(`Are you sure you want to ${action} this user's account? This will update their Firebase Authentication status.`)) {
+        if (!window.confirm(`Are you sure you want to ${action} this user's account? This will update their Supabase auth status.`)) {
             return;
         }
-        
+
         setIsProcessingAction(true);
         setActionMessage('');
         setError('');
 
         try {
-            const toggleActivationFunction = httpsCallable(functions, 'toggleUserActivation');
-            const result = await toggleActivationFunction({ uid: userData.uid, disable: targetDisabledStatus });
-            
-            if (result.data.success) {
-                setActionMessage(String(result.data.message)); // Ensure it's a string
-                // The Cloud Function updated Firestore, so we need to re-fetch or update local state.
-                // For simplicity, re-fetch the user document.
-                const userDocRef = doc(db, "users", userData.uid);
-                const userDocSnap = await getDoc(userDocRef);
-                if (userDocSnap.exists()) {
-                    setUserData({ uid: userDocSnap.id, ...userDocSnap.data() });
+            const response = await fetch('/toggleUserActivation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: userData.uid, disable: targetDisabledStatus })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                setActionMessage(String(result.message));
+                const { data, error } = await db.from('users').select('*').eq('id', userData.uid).single();
+                if (!error && data) {
+                    setUserData({ uid: data.id, ...data });
                 }
             } else {
-                setError(String(result.data.message) || `Failed to ${action} user.`);
+                setError(String(result.message) || `Failed to ${action} user.`);
             }
         } catch (err) {
             console.error(`Error calling toggleUserActivation for user ${userData.uid}:`, err);

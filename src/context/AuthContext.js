@@ -1,9 +1,8 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { app } from '../firebaseConfig'; // Make sure this path is correct
+import { supabase } from '../supabaseClient';
 
 const AuthContext = React.createContext();
-const auth = getAuth(app);
+const auth = supabase.auth;
 
 // --- DEFINE YOUR ADMIN EMAIL HERE ---
 const ADMIN_EMAIL = "blagoyhristov03@gmail.com"; // <--- REPLACE THIS WITH YOUR ACTUAL ADMIN EMAIL
@@ -18,18 +17,23 @@ export function AuthProvider({ children }) {
   const [isAdmin, setIsAdmin] = useState(false); // New state for admin status
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const user = session?.user || null;
       setCurrentUser(user);
-      // --- SET ADMIN STATUS ---
-      if (user && user.email === ADMIN_EMAIL) {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
-      }
+      setIsAdmin(user && user.email === ADMIN_EMAIL);
       setLoading(false);
     });
 
-    return unsubscribe;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const user = session?.user || null;
+      setCurrentUser(user);
+      setIsAdmin(user && user.email === ADMIN_EMAIL);
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const value = {

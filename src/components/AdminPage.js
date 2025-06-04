@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom'; // Link is used for navigation
 import { useAuth } from '../context/AuthContext';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { app } from '../firebaseConfig';
+import { supabase } from '../supabaseClient';
 import Modal from './Modal'; // Assuming Modal.js is in the same components folder
 
-const db = getFirestore(app);
+const db = supabase;
 
 export default function AdminPage() {
   const { auth } = useAuth();
@@ -32,18 +31,15 @@ export default function AdminPage() {
   const fetchMilestones = useCallback(async () => {
     setIsLoadingMilestones(true);
     setMilestoneError('');
-    try {
-      const milestonesCollectionRef = collection(db, "milestones");
-      const q = query(milestonesCollectionRef, orderBy("days", "asc"));
-      const querySnapshot = await getDocs(q);
-      const milestonesData = [];
-      querySnapshot.forEach((doc) => {
-        milestonesData.push({ id: doc.id, ...doc.data() });
-      });
-      setMilestones(milestonesData);
-    } catch (err) {
-      console.error("Error fetching milestones:", err);
-      setMilestoneError("Failed to load milestones. " + err.message);
+    const { data, error } = await db
+      .from('milestones')
+      .select('*')
+      .order('days', { ascending: true });
+    if (error) {
+      console.error('Error fetching milestones:', error);
+      setMilestoneError('Failed to load milestones. ' + error.message);
+    } else {
+      setMilestones(data || []);
     }
     setIsLoadingMilestones(false);
   }, []);
@@ -52,19 +48,12 @@ export default function AdminPage() {
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true);
     setUserListError('');
-    try {
-        // Assuming you have a top-level 'users' collection
-        // where each document ID is the user's UID and contains at least an 'email' field.
-        const usersCollectionRef = collection(db, "users"); 
-        const querySnapshot = await getDocs(usersCollectionRef);
-        const usersData = [];
-        querySnapshot.forEach((doc) => {
-            usersData.push({ uid: doc.id, ...doc.data() });
-        });
-        setAllUsers(usersData);
-    } catch (err) {
-        console.error("Error fetching users:", err);
-        setUserListError("Failed to load users. " + err.message);
+    const { data, error } = await db.from('users').select('*');
+    if (error) {
+      console.error('Error fetching users:', error);
+      setUserListError('Failed to load users. ' + error.message);
+    } else {
+      setAllUsers(data || []);
     }
     setIsLoadingUsers(false);
   }, []);
@@ -89,14 +78,13 @@ export default function AdminPage() {
     setIsSubmittingMilestone(true);
     setMilestoneError('');
     try {
-      const milestonesCollectionRef = collection(db, "milestones");
-      await addDoc(milestonesCollectionRef, {
+      await db.from('milestones').insert({
         days: daysNum,
         title: newMilestoneTitle.trim(),
       });
       setNewMilestoneDays('');
       setNewMilestoneTitle('');
-      await fetchMilestones(); 
+      await fetchMilestones();
     } catch (err) {
       console.error("Error adding milestone:", err);
       setMilestoneError("Failed to add milestone. " + err.message);
@@ -110,9 +98,8 @@ export default function AdminPage() {
     }
     setMilestoneError('');
     try {
-        const milestoneDocRef = doc(db, "milestones", milestoneId);
-        await deleteDoc(milestoneDocRef);
-        await fetchMilestones(); 
+        await db.from('milestones').delete().eq('id', milestoneId);
+        await fetchMilestones();
     } catch (err) {
         console.error("Error deleting milestone:", err);
         setMilestoneError("Failed to delete milestone. " + err.message);
@@ -149,11 +136,10 @@ export default function AdminPage() {
     setIsSubmittingMilestone(true); 
     setMilestoneError('');
     try {
-        const milestoneDocRef = doc(db, "milestones", editingMilestone.id);
-        await updateDoc(milestoneDocRef, {
-            days: daysNum,
-            title: editTitle.trim()
-        });
+        await db
+          .from('milestones')
+          .update({ days: daysNum, title: editTitle.trim() })
+          .eq('id', editingMilestone.id);
         await fetchMilestones();
         handleCloseEditModal();
     } catch (err) {

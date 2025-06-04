@@ -1,13 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext';
-// --- NEW: Import Firestore functions and app instance ---
-import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { app } from '../firebaseConfig';
-
-// --- NEW: Initialize Firestore ---
-const db = getFirestore(app);
+import { supabase } from '../supabaseClient';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -15,7 +9,7 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState(''); // Good practice to add confirm password
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { auth } = useAuth(); // useAuth provides the auth instance from AuthContext
+  const { auth } = useAuth(); // from AuthContext but unused with Supabase
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -25,23 +19,15 @@ export default function Register() {
       return setError("Passwords do not match");
     }
 
-    try {
+  try {
       setError('');
       setLoading(true);
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // --- NEW: Add user to 'users' collection in Firestore ---
+      const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+      if (signUpError) throw signUpError;
+      const user = data.user;
       if (user) {
-        const userDocRef = doc(db, "users", user.uid); // Document ID will be the user's UID
-        await setDoc(userDocRef, {
-          email: user.email,
-          createdAt: serverTimestamp(), // Stores the server's timestamp for when user was created
-          // You could add other initial fields here, e.g., displayName: user.displayName (if available)
-        });
-        console.log("User document created in Firestore users collection for UID:", user.uid);
+        await supabase.from('users').insert({ id: user.id, email, created_at: new Date() });
       }
-      // --- End of new Firestore code ---
 
       navigate('/'); // Redirect to the dashboard after successful registration
     } catch (err) {

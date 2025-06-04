@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabaseClient';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -27,10 +27,11 @@ export default function Login() {
     try {
       setError('');
       setLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) throw signInError;
       navigate('/');
     } catch (err) {
-      handleLoginError(err); // Use our new error handler
+      handleLoginError(err);
     }
     setLoading(false);
   }
@@ -38,11 +39,11 @@ export default function Login() {
   async function handleGoogleSignIn() {
     try {
       setError('');
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const { error: oauthErr } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+      if (oauthErr) throw oauthErr;
       navigate('/');
     } catch (err) {
-      handleLoginError(err); // Use our new error handler
+      handleLoginError(err);
     }
   }
 
